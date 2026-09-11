@@ -66,7 +66,7 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 
-  // First push attempt
+  // First push attemptt
 
   /* USER CODE END 1 */
 
