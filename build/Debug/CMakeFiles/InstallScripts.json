@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"C:/Users/pablo/STM32CubeIDE/workspace_1.18.1/rc-submarine/build/Debug/cmake_install.cmake",
-		"C:/Users/pablo/STM32CubeIDE/workspace_1.18.1/rc-submarine/build/Debug/cmake/stm32cubemx/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

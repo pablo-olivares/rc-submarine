@@ -1,17 +1,18 @@
 {
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "type": "stlinkgdbtarget",
-      "request": "launch",
-      "name": "STM32 Flash & Debug (ST-LINK)",
-      "cwd": "${workspaceFolder}",
-      "runEntry": "main",
-      "imagesAndSymbols": [
+    "version": "0.2.0",
+    "configurations": [
         {
-          "imageFileName": "${command:st-stm32-ide-debug-launch.get-projects-binary-from-context1}"
+            "type": "stlinkgdbtarget",
+            "request": "launch",
+            "name": "STM32 Flash & Debug (ST-LINK)",
+            "cwd": "${workspaceFolder}",
+            // We removed the broken automated preBuild command line here
+            "runEntry": "main",
+            "imagesAndSymbols": [
+                {
+                    "imageFileName": "${command:st-stm32-ide-debug-launch.get-projects-binary-from-context1}"
+                }
+            ]
         }
-      ]
-    }
-  ]
+    ]
 }
