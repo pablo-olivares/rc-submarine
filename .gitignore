@@ -1,0 +1,12 @@
+# Ignore the entire build output directory
+build/
+Build/
+
+# Ignore specific compiler outputs
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.su
+*.d
