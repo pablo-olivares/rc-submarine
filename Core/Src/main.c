@@ -90,46 +90,98 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
+  uint16_t last_1s_toggle_time = 0; // Variable to store the last toggle time for LED_1
+  uint16_t last_5s_toggle_time = 0; // Variable to store the last toggle time for LED_1 and LED_2
+  uint16_t last_10s_toggle_time = 0; // Variable to store the last toggle time for LED_1, LED_2, and LED_3
 
+  HAL_TIM_Base_Start(&htim3); // Start the timer
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-
-  HAL_TIM_Base_Start(&htim3); // Start the timer
-
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    uint16_t current_time = __HAL_TIM_GET_COUNTER(&htim3); // Get the current timer count
+
+    
+    //Button press detection and LED control: Method 3
+    //Press Button_1 to turn on LED_1 every 1 second
+    if (HAL_GPIO_ReadPin(Button_1_GPIO_Port, Button_1_Pin) == GPIO_PIN_SET)
+    {
+      // Button_1 is pressed, toggle LED_1 every 1 second
+      if ((uint16_t)(current_time - last_1s_toggle_time) >= 1000)
+      {
+        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
+        last_1s_toggle_time = current_time; // Update the last toggle time for LED_1
+      }
+    }
+
+    // Press Button_2 to turn on LED_1 and LED_2 every 5 seconds
+    if (HAL_GPIO_ReadPin(Button_2_GPIO_Port, Button_2_Pin) == GPIO_PIN_SET)
+    {
+      // Button_2 is pressed, toggle LED_1 and LED_2 every 5 seconds
+      if ((uint16_t)(current_time - last_5s_toggle_time) >= 5000)
+      {
+        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
+        HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
+        last_5s_toggle_time = current_time; // Update the last toggle time for LED_1 and LED_2
+      }
+    }
+
+    // Press Button_3 to turn on LED_1, LED_2, and LED_3 every 10 seconds
+    if (HAL_GPIO_ReadPin(Button_3_GPIO_Port, Button_3_Pin) == GPIO_PIN_SET)
+    {
+      // Button_3 is pressed, toggle LED_1, LED_2, and LED_3 every 10 seconds
+      if ((uint16_t)(current_time - last_10s_toggle_time) >= 10000)
+      {
+        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
+        HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
+        HAL_GPIO_TogglePin(LED_3_GPIO_Port, LED_3_Pin); // Toggle LED_3 state
+        last_10s_toggle_time = current_time; // Update the last toggle time for LED_1, LED_2, and LED_3
+      }
+    }
+
+    /*
     //Button press detection and LED control: Method 2
     //Press Button_1 to turn on LED_1 every 1 second
     if (HAL_GPIO_ReadPin(Button_1_GPIO_Port, Button_1_Pin) == GPIO_PIN_SET)
     {
-      HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
-      while(__HAL_TIM_GET_FLAG(&htim3, TIM_FLAG_UPDATE) == RESET); // Wait for the update event flag to be set
-      __HAL_TIM_CLEAR_FLAG(&htim3, TIM_FLAG_UPDATE); // Clear the update event flag
+      // Check if 1 second has passed since the last toggle
+      if (__HAL_TIM_GET_COUNTER(&htim3) >= 100)
+      {
+        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
+        __HAL_TIM_SET_COUNTER(&htim3, 0); // Reset the timer counter
+      }
     }
 
     //Press Button_2 to turn on LED_1 and LED_2  every 5 seconds
     if (HAL_GPIO_ReadPin(Button_2_GPIO_Port, Button_2_Pin) == GPIO_PIN_SET)
     {
-      HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
-      HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
-      while(__HAL_TIM_GET_FLAG(&htim3, TIM_FLAG_UPDATE) == RESET); // Wait for the update event flag to be set
-      __HAL_TIM_CLEAR_FLAG(&htim3, TIM_FLAG_UPDATE); // Clear the update event flag
+      // Check if 5 seconds have passed since the last toggle
+      if (__HAL_TIM_GET_COUNTER(&htim3) >= 500)
+      {
+        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
+        HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
+        __HAL_TIM_SET_COUNTER(&htim3, 0); // Reset the timer counter
+      }
     }
 
     // Press Button_3 to turn on LED_1, LED_2 and LED_3 every 10 seconds
     if (HAL_GPIO_ReadPin(Button_3_GPIO_Port, Button_3_Pin) == GPIO_PIN_SET)
     {
-      HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
-      HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
-      HAL_GPIO_TogglePin(LED_3_GPIO_Port, LED_3_Pin); // Toggle LED_3 state
-      while(__HAL_TIM_GET_FLAG(&htim3, TIM_FLAG_UPDATE) == RESET); // Wait for the update event flag to be set
-      __HAL_TIM_CLEAR_FLAG(&htim3, TIM_FLAG_UPDATE); // Clear the update event flag
+      // Check if 10 seconds have passed since the last toggle
+      if (__HAL_TIM_GET_COUNTER(&htim3) >= 1000)
+      {
+        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
+        HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
+        HAL_GPIO_TogglePin(LED_3_GPIO_Port, LED_3_Pin); // Toggle LED_3 state
+        __HAL_TIM_SET_COUNTER(&htim3, 0); // Reset the timer counter
+      }
     }
+      */
 
 
     /*
@@ -245,7 +297,7 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 48000-1;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 1000-1;
+  htim3.Init.Period = 65536-1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
