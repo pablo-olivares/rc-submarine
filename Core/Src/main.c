@@ -100,7 +100,10 @@ int main(void)
 
   HAL_TIM_Base_Start(&htim3); // Start the timer
 
+  // Variables to track the last state of buttons for edge detection
   uint8_t last_button_1_state = GPIO_PIN_RESET; // Variable to store the last state of Button_1
+  uint8_t last_button_2_state = GPIO_PIN_RESET; // Variable to store the last state of Button_2
+  uint8_t last_button_3_state = GPIO_PIN_RESET; // Variable to store the last state of Button_3
   
   /* USER CODE END 2 */
 
@@ -115,8 +118,10 @@ int main(void)
 
     uint16_t current_time = __HAL_TIM_GET_COUNTER(&htim3); // Get the current timer count
 
-    // Read the current hardware state of Button_1
-    uint8_t current_button_1_state = HAL_GPIO_ReadPin(Button_1_GPIO_Port, Button_1_Pin);
+    // Read the current hardware state of buttons
+    uint8_t current_button_1_state = HAL_GPIO_ReadPin(Button_1_GPIO_Port, Button_1_Pin); // Current state of Button_1
+    uint8_t current_button_2_state = HAL_GPIO_ReadPin(Button_2_GPIO_Port, Button_2_Pin); // Current state of Button_2
+    uint8_t current_button_3_state = HAL_GPIO_ReadPin(Button_3_GPIO_Port, Button_3_Pin); // Current state of Button_3
 
     // Check for the falling edge of Button_1 (transition from not pressed to pressed)
     if (current_button_1_state == GPIO_PIN_RESET && last_button_1_state == GPIO_PIN_SET)
@@ -124,12 +129,8 @@ int main(void)
       // Button_1 is pressed, toggle LED_1 state
       HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin);
       HAL_Delay(50); // Add a small delay to avoid multiple toggles for a single press
-    }
 
-    // Update the tracking history for the next iteration
-    last_button_1_state = current_button_1_state;
-
-  // Tell RealTerm if LED is ON or OFF
+        // Tell RealTerm if LED 1 is ON or OFF
     if (HAL_GPIO_ReadPin(LED_1_GPIO_Port, LED_1_Pin) == GPIO_PIN_SET)
     {
       uint8_t led_1_on_msg[] = "LED_1 is ON\r\n";
@@ -140,6 +141,61 @@ int main(void)
       uint8_t led_1_off_msg[] = "LED_1 is OFF\r\n";
       HAL_UART_Transmit(&huart2, led_1_off_msg, sizeof(led_1_off_msg) - 1, 100);
     }
+
+    }
+
+    // Check for the falling edge of Button_2 (transition from not pressed to pressed)
+    if (current_button_2_state == GPIO_PIN_RESET && last_button_2_state == GPIO_PIN_SET)
+    {
+      // Button_2 is pressed, toggle LED_2 state
+      HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin);
+      HAL_Delay(50); // Add a small delay to avoid multiple toggles for a single press
+
+          // Tell RealTerm if LED 2 is ON or OFF
+    if (HAL_GPIO_ReadPin(LED_2_GPIO_Port, LED_2_Pin) == GPIO_PIN_SET)
+    {
+      uint8_t led_2_on_msg[] = "LED_2 is ON\r\n";
+      HAL_UART_Transmit(&huart2, led_2_on_msg, sizeof(led_2_on_msg) - 1, 100);
+    }
+    else
+    {
+      uint8_t led_2_off_msg[] = "LED_2 is OFF\r\n";
+      HAL_UART_Transmit(&huart2, led_2_off_msg, sizeof(led_2_off_msg) - 1, 100);
+    }
+
+    }
+
+    // Check for the falling edge of Button_3 (transition from not pressed to pressed)
+    if (current_button_3_state == GPIO_PIN_RESET && last_button_3_state == GPIO_PIN_SET)
+    {
+      // Button_3 is pressed, toggle LED_3 state
+      HAL_GPIO_TogglePin(LED_3_GPIO_Port, LED_3_Pin);
+      HAL_Delay(50); // Add a small delay to avoid multiple toggles for a single press
+
+          // Tell RealTerm if LED 3 is ON or OFF
+    if (HAL_GPIO_ReadPin(LED_3_GPIO_Port, LED_3_Pin) == GPIO_PIN_SET)
+    {
+      uint8_t led_3_on_msg[] = "LED_3 is ON\r\n";
+      HAL_UART_Transmit(&huart2, led_3_on_msg, sizeof(led_3_on_msg) - 1, 100);
+    }
+    else
+    {
+      uint8_t led_3_off_msg[] = "LED_3 is OFF\r\n";
+      HAL_UART_Transmit(&huart2, led_3_off_msg, sizeof(led_3_off_msg) - 1, 100);
+    }
+
+    }
+
+    // Update the tracking history for the next iteration
+    last_button_1_state = current_button_1_state; // Update the last state of Button_1
+    last_button_2_state = current_button_2_state; // Update the last state of Button_2
+    last_button_3_state = current_button_3_state; // Update the last state of
+
+
+
+
+
+
 
     /*
     //Button press detection and LED control: Method 3
@@ -464,7 +520,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : Button_2_Pin */
   GPIO_InitStruct.Pin = Button_2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(Button_2_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LED_3_Pin LED_1_Pin */
@@ -482,8 +538,8 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : Button_3_Pin */
   GPIO_InitStruct.Pin = Button_3_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(Button_3_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */

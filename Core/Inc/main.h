@@ -73,6 +73,8 @@ void Error_Handler(void);
 #define LED_1_GPIO_Port GPIOC
 #define Button_1_Pin GPIO_PIN_8
 #define Button_1_GPIO_Port GPIOA
+#define Button_3_Pin GPIO_PIN_9
+#define Button_3_GPIO_Port GPIOA
 #define LED_2_Pin GPIO_PIN_11
 #define LED_2_GPIO_Port GPIOA
 #define TMS_Pin GPIO_PIN_13
@@ -81,8 +83,6 @@ void Error_Handler(void);
 #define TCK_GPIO_Port GPIOA
 #define SWO_Pin GPIO_PIN_3
 #define SWO_GPIO_Port GPIOB
-#define Button_3_Pin GPIO_PIN_8
-#define Button_3_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
