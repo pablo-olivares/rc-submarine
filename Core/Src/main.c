@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -40,12 +41,17 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+
 TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+uint16_t last_1s_toggle_time = 0; // Variable to store the last toggle time for LED_1
+uint16_t last_2s_toggle_time = 0; // Variable to store the last toggle time for LED_1 and LED_2
+uint16_t last_3s_toggle_time = 0; // Variable to store the last toggle time for LED_1, LED_2, and LED_3
+uint16_t adc_value = 0; // Variable to store the ADC value
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -53,6 +59,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -93,10 +100,8 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM3_Init();
   MX_USART2_UART_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-  uint16_t last_1s_toggle_time = 0; // Variable to store the last toggle time for LED_1
-  uint16_t last_2s_toggle_time = 0; // Variable to store the last toggle time for LED_1 and LED_2
-  uint16_t last_3s_toggle_time = 0; // Variable to store the last toggle time for LED_1, LED_2, and LED_3
 
   HAL_TIM_Base_Start(&htim3); // Start the timer
 
@@ -116,7 +121,16 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-    uint16_t current_time = __HAL_TIM_GET_COUNTER(&htim3); // Get the current timer count
+    // ADC Conversion and UART Transmission
+    HAL_ADC_Start(&hadc1); // Start ADC conversion
+    // Wait for the conversion to complete
+    if (HAL_ADC_PollForConversion(&hadc1, 100) == HAL_OK)
+    {
+      // Conversion completed successfully
+      adc_value = HAL_ADC_GetValue(&hadc1); // Get the ADC value
+    }
+
+    HAL_ADC_Stop(&hadc1); // Stop ADC conversion 
 
     // Read the current hardware state of buttons
     uint8_t current_button_1_state = HAL_GPIO_ReadPin(Button_1_GPIO_Port, Button_1_Pin); // Current state of Button_1
@@ -130,18 +144,6 @@ int main(void)
       HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin);
       HAL_Delay(50); // Add a small delay to avoid multiple toggles for a single press
 
-        // Tell RealTerm if LED 1 is ON or OFF
-    if (HAL_GPIO_ReadPin(LED_1_GPIO_Port, LED_1_Pin) == GPIO_PIN_SET)
-    {
-      uint8_t led_1_on_msg[] = "LED_1 is ON\r\n";
-      HAL_UART_Transmit(&huart2, led_1_on_msg, sizeof(led_1_on_msg) - 1, 100);
-    }
-    else
-    {
-      uint8_t led_1_off_msg[] = "LED_1 is OFF\r\n";
-      HAL_UART_Transmit(&huart2, led_1_off_msg, sizeof(led_1_off_msg) - 1, 100);
-    }
-
     }
 
     // Check for the falling edge of Button_2 (transition from not pressed to pressed)
@@ -150,18 +152,6 @@ int main(void)
       // Button_2 is pressed, toggle LED_2 state
       HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin);
       HAL_Delay(50); // Add a small delay to avoid multiple toggles for a single press
-
-          // Tell RealTerm if LED 2 is ON or OFF
-    if (HAL_GPIO_ReadPin(LED_2_GPIO_Port, LED_2_Pin) == GPIO_PIN_SET)
-    {
-      uint8_t led_2_on_msg[] = "LED_2 is ON\r\n";
-      HAL_UART_Transmit(&huart2, led_2_on_msg, sizeof(led_2_on_msg) - 1, 100);
-    }
-    else
-    {
-      uint8_t led_2_off_msg[] = "LED_2 is OFF\r\n";
-      HAL_UART_Transmit(&huart2, led_2_off_msg, sizeof(led_2_off_msg) - 1, 100);
-    }
 
     }
 
@@ -172,18 +162,6 @@ int main(void)
       HAL_GPIO_TogglePin(LED_3_GPIO_Port, LED_3_Pin);
       HAL_Delay(50); // Add a small delay to avoid multiple toggles for a single press
 
-          // Tell RealTerm if LED 3 is ON or OFF
-    if (HAL_GPIO_ReadPin(LED_3_GPIO_Port, LED_3_Pin) == GPIO_PIN_SET)
-    {
-      uint8_t led_3_on_msg[] = "LED_3 is ON\r\n";
-      HAL_UART_Transmit(&huart2, led_3_on_msg, sizeof(led_3_on_msg) - 1, 100);
-    }
-    else
-    {
-      uint8_t led_3_off_msg[] = "LED_3 is OFF\r\n";
-      HAL_UART_Transmit(&huart2, led_3_off_msg, sizeof(led_3_off_msg) - 1, 100);
-    }
-
     }
 
     // Update the tracking history for the next iteration
@@ -191,127 +169,6 @@ int main(void)
     last_button_2_state = current_button_2_state; // Update the last state of Button_2
     last_button_3_state = current_button_3_state; // Update the last state of
 
-
-
-
-
-
-
-    /*
-    //Button press detection and LED control: Method 3
-
-      // Tell RealTerm if LED is ON or OFF
-      if (HAL_GPIO_ReadPin(LED_1_GPIO_Port, LED_1_Pin) == GPIO_PIN_SET)
-      {
-        uint8_t led_1_on_msg[] = "LED_1 is ON\r\n";
-        HAL_UART_Transmit(&huart2, led_1_on_msg, sizeof(led_1_on_msg) - 1, 100);
-      }
-      else
-      {
-        uint8_t led_1_off_msg[] = "LED_1 is OFF\r\n";
-        HAL_UART_Transmit(&huart2, led_1_off_msg, sizeof(led_1_off_msg) - 1, 100);
-      }
-
-    // Press Button_2 to turn on LED_1 and LED_2 every 2 seconds
-    if (HAL_GPIO_ReadPin(Button_2_GPIO_Port, Button_2_Pin) == GPIO_PIN_SET)
-    {
-      // Tell RealTerm that Button_2 is pressed
-      uint8_t button_2_pressed_msg[] = "Button_2 is pressed\r\n";
-      HAL_UART_Transmit(&huart2, button_2_pressed_msg, sizeof(button_2_pressed_msg) - 1, 100);
-
-      // Button_2 is pressed, toggle LED_1 and LED_2 every 2 seconds
-      if ((uint16_t)(current_time - last_2s_toggle_time) >= 2000)
-      {
-        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
-        HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
-        last_2s_toggle_time = current_time; // Update the last toggle time for LED_1 and LED_2
-      }
-
-      // Tell RealTerm if LED_2 is ON or OFF
-      if (HAL_GPIO_ReadPin(LED_2_GPIO_Port, LED_2_Pin) == GPIO_PIN_SET)
-      {
-        uint8_t led_2_on_msg[] = "LED_2 is ON\r\n";
-        HAL_UART_Transmit(&huart2, led_2_on_msg, sizeof(led_2_on_msg) - 1, 100);
-      }
-      else
-      {
-        uint8_t led_2_off_msg[] = "LED_2 is OFF\r\n";
-        HAL_UART_Transmit(&huart2, led_2_off_msg, sizeof(led_2_off_msg) - 1, 100);
-      }
-    }
-
-    // Press Button_3 to turn on LED_1, LED_2, and LED_3 every 3 seconds
-    if (HAL_GPIO_ReadPin(Button_3_GPIO_Port, Button_3_Pin) == GPIO_PIN_SET)
-    {
-      // Tell RealTerm that Button_3 is pressed
-      uint8_t button_3_pressed_msg[] = "Button_3 is pressed\r\n";
-      HAL_UART_Transmit(&huart2, button_3_pressed_msg, sizeof(button_3_pressed_msg) - 1, 100);
-
-      // Button_3 is pressed, toggle LED_1, LED_2, and LED_3 every 3 seconds
-      if ((uint16_t)(current_time - last_3s_toggle_time) >= 3000)
-      {
-        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
-        HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
-        HAL_GPIO_TogglePin(LED_3_GPIO_Port, LED_3_Pin); // Toggle LED_3 state
-        last_3s_toggle_time = current_time; // Update the last toggle time for LED_1, LED_2, and LED_3
-      }
-
-      // Tell RealTerm if LED_3 is ON or OFF
-      if (HAL_GPIO_ReadPin(LED_3_GPIO_Port, LED_3_Pin) == GPIO_PIN_SET)
-      {
-        uint8_t led_3_on_msg[] = "LED_3 is ON\r\n";
-        HAL_UART_Transmit(&huart2, led_3_on_msg, sizeof(led_3_on_msg) - 1, 100);
-      }
-      else
-      {
-        uint8_t led_3_off_msg[] = "LED_3 is OFF\r\n";
-        HAL_UART_Transmit(&huart2, led_3_off_msg, sizeof(led_3_off_msg) - 1, 100);
-      }
-    }
-    */
-
-    /*
-    //Button press detection and LED control: Method 2
-    //Press Button_1 to turn on LED_1 every 1 second
-    if (HAL_GPIO_ReadPin(Button_1_GPIO_Port, Button_1_Pin) == GPIO_PIN_SET)
-    {
-      // Check if 1 second has passed since the last toggle
-      if (__HAL_TIM_GET_COUNTER(&htim3) >= 100)
-      {
-        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
-        __HAL_TIM_SET_COUNTER(&htim3, 0); // Reset the timer counter
-      }
-    }
-
-    //Press Button_2 to turn on LED_1 and LED_2  every 5 seconds
-    if (HAL_GPIO_ReadPin(Button_2_GPIO_Port, Button_2_Pin) == GPIO_PIN_SET)
-    {
-      // Check if 5 seconds have passed since the last toggle
-      if (__HAL_TIM_GET_COUNTER(&htim3) >= 500)
-      {
-        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
-        HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
-        __HAL_TIM_SET_COUNTER(&htim3, 0); // Reset the timer counter
-      }
-    }
-
-    // Press Button_3 to turn on LED_1, LED_2 and LED_3 every 10 seconds
-    if (HAL_GPIO_ReadPin(Button_3_GPIO_Port, Button_3_Pin) == GPIO_PIN_SET)
-    {
-      // Check if 10 seconds have passed since the last toggle
-      if (__HAL_TIM_GET_COUNTER(&htim3) >= 1000)
-      {
-        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
-        HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
-        HAL_GPIO_TogglePin(LED_3_GPIO_Port, LED_3_Pin); // Toggle LED_3 state
-        __HAL_TIM_SET_COUNTER(&htim3, 0); // Reset the timer counter
-      }
-    }
-      */
-
-
-    /*
-    // Button press detection and LED control: Method 1
     // Press B1 to turn on LD2
     if (HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_SET)
     {
@@ -322,36 +179,39 @@ int main(void)
       HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
     }
 
-    // Press Button_1 to turn on LED_1
-    if (HAL_GPIO_ReadPin(Button_1_GPIO_Port, Button_1_Pin) == GPIO_PIN_SET)
+    // Code for Real Term 
+    uint32_t current_time_ms = HAL_GetTick(); // Get the current time in milliseconds
+    if(current_time_ms - last_1s_toggle_time >= 500) // Update 4 times a second
     {
-      HAL_GPIO_WritePin(LED_1_GPIO_Port, LED_1_Pin, GPIO_PIN_SET);
-    }
-    else
-    {
-      HAL_GPIO_WritePin(LED_1_GPIO_Port, LED_1_Pin, GPIO_PIN_RESET);
+      last_1s_toggle_time = current_time_ms; // Update the last toggle time
+
+      // 1. Evaluate the hardware status of all three LEDs
+      char* led1_str = (HAL_GPIO_ReadPin(LED_1_GPIO_Port, LED_1_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
+      char* led2_str = (HAL_GPIO_ReadPin(LED_2_GPIO_Port, LED_2_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
+      char* led3_str = (HAL_GPIO_ReadPin(LED_3_GPIO_Port, LED_3_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
+
+      // 2. Create an expanded buffer to handle the extra lines of text
+      char dash_msg[300];
+
+      // 3. Format the complete telemetry packet with ANSI clear screen commands
+      snprintf(dash_msg, sizeof(dash_msg),
+          "\033[H"                  // Move cursor to top-left
+          "\033[2J"                 // Clear screen
+          "==============================\r\n"
+          "     EMBEDDED SYSTEM TELEMETRY \r\n"
+          "==============================\r\n"
+          " Potentiometer Reading : %u   \r\n"
+          "------------------------------\r\n"
+          " Status LED Pin _1     : %s   \r\n"
+          " Status LED Pin _2     : %s   \r\n"
+          " Status LED Pin _3     : %s   \r\n"
+          "==============================\r\n",
+          adc_value, led1_str, led2_str, led3_str);
+
+      // 4. Transmit the complete string block to RealTerm
+      HAL_UART_Transmit(&huart2, (uint8_t*)dash_msg, strlen(dash_msg), 100);
     }
 
-    // Press Button_2 to turn on LED_2
-    if (HAL_GPIO_ReadPin(Button_2_GPIO_Port, Button_2_Pin) == GPIO_PIN_SET)
-    {
-      HAL_GPIO_WritePin(LED_2_GPIO_Port, LED_2_Pin, GPIO_PIN_SET);
-    }
-    else
-    {
-      HAL_GPIO_WritePin(LED_2_GPIO_Port, LED_2_Pin, GPIO_PIN_RESET);
-    }
-
-    // Press Button_3 to turn on LED_3
-    if (HAL_GPIO_ReadPin(Button_3_GPIO_Port, Button_3_Pin) == GPIO_PIN_SET)
-    {
-      HAL_GPIO_WritePin(LED_3_GPIO_Port, LED_3_Pin, GPIO_PIN_SET);
-    }
-    else
-    {
-      HAL_GPIO_WritePin(LED_3_GPIO_Port, LED_3_Pin, GPIO_PIN_RESET);
-    }
-      */
   }
   /* USER CODE END 3 */
 }
@@ -400,6 +260,58 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc1.Init.ScanConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.DMAContinuousRequests = DISABLE;
+  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_28CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
 }
 
 /**
@@ -520,7 +432,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : Button_2_Pin */
   GPIO_InitStruct.Pin = Button_2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(Button_2_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LED_3_Pin LED_1_Pin */
@@ -533,13 +445,13 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : Button_1_Pin */
   GPIO_InitStruct.Pin = Button_1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(Button_1_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : Button_3_Pin */
   GPIO_InitStruct.Pin = Button_3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(Button_3_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
