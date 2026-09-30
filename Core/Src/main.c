@@ -102,7 +102,10 @@ int main(void)
   MX_USART2_UART_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+  // Start the timer for PWM generation
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
+  // Start the timer for periodic interrupts
   HAL_TIM_Base_Start(&htim3); // Start the timer
 
   // Variables to track the last state of buttons for edge detection
@@ -131,6 +134,12 @@ int main(void)
     }
 
     HAL_ADC_Stop(&hadc1); // Stop ADC conversion 
+
+    // Tie the ADC value to the PWM duty cycle for LED brightness control
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, adc_value);
+
+    // Calculate the duty percentage for RealTerm telemetry
+    uint32_t duty_percentage = (adc_value * 100) / 4095; // Calculate duty cycle percentage
 
     // Read the current hardware state of buttons
     uint8_t current_button_1_state = HAL_GPIO_ReadPin(Button_1_GPIO_Port, Button_1_Pin); // Current state of Button_1
@@ -191,7 +200,7 @@ int main(void)
       char* led3_str = (HAL_GPIO_ReadPin(LED_3_GPIO_Port, LED_3_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
 
       // 2. Create an expanded buffer to handle the extra lines of text
-      char dash_msg[300];
+      char dash_msg[512];
 
       // 3. Format the complete telemetry packet with ANSI clear screen commands
       snprintf(dash_msg, sizeof(dash_msg),
@@ -205,8 +214,9 @@ int main(void)
           " Status LED Pin _1     : %s   \r\n"
           " Status LED Pin _2     : %s   \r\n"
           " Status LED Pin _3     : %s   \r\n"
-          "==============================\r\n",
-          adc_value, led1_str, led2_str, led3_str);
+          "==============================\r\n"
+          " PWM Duty Cycle        : %lu%% \r\n",
+          adc_value, led1_str, led2_str, led3_str, duty_percentage);
 
       // 4. Transmit the complete string block to RealTerm
       HAL_UART_Transmit(&huart2, (uint8_t*)dash_msg, strlen(dash_msg), 100);
@@ -328,14 +338,15 @@ static void MX_TIM3_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM3_Init 1 */
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 48000-1;
+  htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 65536-1;
+  htim3.Init.Period = 4095;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -347,15 +358,28 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
 
 }
 
