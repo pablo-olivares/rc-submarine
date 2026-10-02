@@ -44,6 +44,7 @@
 ADC_HandleTypeDef hadc1;
 
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
 
@@ -60,6 +61,7 @@ static void MX_GPIO_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -101,6 +103,7 @@ int main(void)
   MX_TIM3_Init();
   MX_USART2_UART_Init();
   MX_ADC1_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   // Start the timer for PWM generation
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
@@ -108,10 +111,19 @@ int main(void)
   // Start the timer for periodic interrupts
   HAL_TIM_Base_Start(&htim3); // Start the timer
 
+  HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL); // Start the encoder interface
+
   // Variables to track the last state of buttons for edge detection
   uint8_t last_button_1_state = GPIO_PIN_RESET; // Variable to store the last state of Button_1
   uint8_t last_button_2_state = GPIO_PIN_RESET; // Variable to store the last state of Button_2
   uint8_t last_button_3_state = GPIO_PIN_RESET; // Variable to store the last state of Button_3
+
+  // Motor feedback variables
+  uint32_t current_count = 0; // Variable to store the current counter value of the encoder
+  uint32_t last_count = 0; // Variable to store the last counter value of the encoder
+  int16_t raw_delta = 0; // Variable to store the raw delta count (difference between current and last count)
+  int32_t motor_rpm = 0; // Variable to store the calculated motor RPM (Revolutions Per Minute)
+  int32_t rounded_rpm = 0; // Variable to store the rounded motor RPM for display purposes
   
   /* USER CODE END 2 */
 
@@ -188,9 +200,30 @@ int main(void)
       HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
     }
 
+    // Motor RPM Calculation
+    current_count = __HAL_TIM_GET_COUNTER(&htim4); // Get the current encoder count value
+
+    // Cast the counter data to a signed 16-bit integer to seamlessly handle backward rotation (negative delta counts)
+    raw_delta = (int16_t)(current_count - last_count); // Calculate the raw delta count
+    last_count = current_count; // Update the last count for the next iteration
+
+    // Math: (Pulses / Time Delta) / (Encoder CPR * Gear Ration) * 60 seconds
+    // Adjust the numbers below based on your specific Pololu RF-370 15370 gear ratio configuration
+    motor_rpm = ((float)raw_delta / 0.1f) / (48.0f * 47.0f) * 60.0f; // Calculate motor RPM
+
+    // Calculate the rounded RPM for display purposes
+    if (motor_rpm >= 0.0f)
+    {
+      rounded_rpm = (int32_t)(motor_rpm + 0.5f); // Round up for positive RPM values
+    }
+    else
+    {
+      rounded_rpm = (int32_t)(motor_rpm - 0.5f); // Round down for negative RPM values
+    }
+
     // Code for Real Term 
     uint32_t current_time_ms = HAL_GetTick(); // Get the current time in milliseconds
-    if(current_time_ms - last_1s_toggle_time >= 500) // Update 4 times a second
+    if(current_time_ms - last_1s_toggle_time >= 1000) // Update every 1000 ms for a more responsive display
     {
       last_1s_toggle_time = current_time_ms; // Update the last toggle time
 
@@ -202,6 +235,9 @@ int main(void)
       // 2. Create an expanded buffer to handle the extra lines of text
       char dash_msg[512];
 
+      // Wipe buffer to avoid residual data from previous transmissions
+      memset(dash_msg, 0, sizeof(dash_msg));
+
       // 3. Format the complete telemetry packet with ANSI clear screen commands
       snprintf(dash_msg, sizeof(dash_msg),
           "\033[H"                  // Move cursor to top-left
@@ -209,17 +245,19 @@ int main(void)
           "==============================\r\n"
           "     EMBEDDED SYSTEM TELEMETRY \r\n"
           "==============================\r\n"
-          " Potentiometer Reading : %u   \r\n"
+          " Potentiometer Reading : %4u   \r\n"
           "------------------------------\r\n"
           " Status LED Pin _1     : %s   \r\n"
           " Status LED Pin _2     : %s   \r\n"
           " Status LED Pin _3     : %s   \r\n"
-          "==============================\r\n"
-          " PWM Duty Cycle        : %lu%% \r\n",
-          adc_value, led1_str, led2_str, led3_str, duty_percentage);
+          "------------------------------\r\n"
+          " PWM Duty Cycle        : %3lu%% \r\n"
+          " Motor RPM             : %ld \r\n"
+          "==============================\r\n",
+          adc_value, led1_str, led2_str, led3_str, duty_percentage, rounded_rpm);
 
       // 4. Transmit the complete string block to RealTerm
-      HAL_UART_Transmit(&huart2, (uint8_t*)dash_msg, strlen(dash_msg), 100);
+      HAL_UART_Transmit(&huart2, (uint8_t*)dash_msg, strlen(dash_msg), 250);
     }
 
   }
@@ -384,6 +422,55 @@ static void MX_TIM3_Init(void)
 }
 
 /**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 0;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 65535;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 0;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 0;
+  if (HAL_TIM_Encoder_Init(&htim4, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -446,6 +533,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : Button_1_Pin Button_3_Pin */
+  GPIO_InitStruct.Pin = Button_1_Pin|Button_3_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
   /*Configure GPIO pins : LD2_Pin LED_2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin|LED_2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -456,7 +549,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : Button_2_Pin */
   GPIO_InitStruct.Pin = Button_2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(Button_2_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LED_3_Pin LED_1_Pin */
@@ -465,18 +558,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : Button_1_Pin */
-  GPIO_InitStruct.Pin = Button_1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(Button_1_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : Button_3_Pin */
-  GPIO_InitStruct.Pin = Button_3_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(Button_3_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
