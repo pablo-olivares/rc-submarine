@@ -56,6 +56,7 @@ uint16_t last_2s_toggle_time = 0; // Variable to store the last toggle time for 
 uint16_t last_3s_toggle_time = 0; // Variable to store the last toggle time for LED_1, LED_2, and LED_3
 uint16_t adc_value = 0; // Variable to store the ADC value
 char dma_tx_buffer[512]; // Buffer for DMA transmission
+volatile uint8_t uart_tx_ready = 1; // Flag to indicate if UART is ready for transmission
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -247,9 +248,10 @@ int main(void)
     // Code for RealTerm Telemetry Display using DMA UART Transmission
     if(current_time_ms - last_1s_toggle_time >= 1000) // Update every 1000 ms for a more responsive display
     {
-      if (huart2.gState == HAL_UART_STATE_BUSY_TX) // Check if UART is busy transmitting
+      // If the ture callbak flag isn't set, drp this frame safely
+      if (uart_tx_ready == 0)
       {
-        // If UART is busy, skip this iteration to avoid data collision
+        last_1s_toggle_time += 10; 
         continue;
       }
 
@@ -259,6 +261,9 @@ int main(void)
       char* led1_str = (HAL_GPIO_ReadPin(LED_1_GPIO_Port, LED_1_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
       char* led2_str = (HAL_GPIO_ReadPin(LED_2_GPIO_Port, LED_2_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
       char* led3_str = (HAL_GPIO_ReadPin(LED_3_GPIO_Port, LED_3_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
+
+      // Forcebly clear the array with zeores before every single line
+      memset(dma_tx_buffer, 0, sizeof(dma_tx_buffer)); // Clear the DMA transmission buffer
 
       int msg_len = snprintf(dma_tx_buffer, sizeof(dma_tx_buffer),
           "\033[H\033[2J"                 // Move cursor to top-left and clear screen
@@ -272,9 +277,12 @@ int main(void)
           " LED 3       : %s   \r\n"
           "------------------------------\r\n"
           " PWM Duty    : %3lu%% \r\n"
-          " Motor RPM   : %ld \r\n"
+          " Motor RPM   : %-5ld \r\n"
           "==============================\r\n",
           adc_value, led1_str, led2_str, led3_str, duty_percentage, rounded_rpm);
+
+      // Lock the barrier right before launching the transmission pipelin
+      uart_tx_ready = 0; // Clear the UART ready flag before starting transmission
 
       // 4. Transmit the complete string block to RealTerm
       HAL_UART_Transmit_DMA(&huart2, (uint8_t*)dma_tx_buffer, msg_len); // Transmit the telemetry data via DMA
@@ -469,11 +477,11 @@ static void MX_TIM4_Init(void)
   sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
-  sConfig.IC1Filter = 0;
+  sConfig.IC1Filter = 15;
   sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
-  sConfig.IC2Filter = 0;
+  sConfig.IC2Filter = 15;
   if (HAL_TIM_Encoder_Init(&htim4, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -601,7 +609,14 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+// Callback function for UART transmission complete interrupt
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART2) // Check if the callback is for USART2
+  {
+    uart_tx_ready = 1; // Set the UART ready flag to indicate transmission is complete
+  }
+}
 /* USER CODE END 4 */
 
 /**
