@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,17 +48,20 @@ TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 uint16_t last_1s_toggle_time = 0; // Variable to store the last toggle time for LED_1
 uint16_t last_2s_toggle_time = 0; // Variable to store the last toggle time for LED_1 and LED_2
 uint16_t last_3s_toggle_time = 0; // Variable to store the last toggle time for LED_1, LED_2, and LED_3
 uint16_t adc_value = 0; // Variable to store the ADC value
+char dma_tx_buffer[512]; // Buffer for DMA transmission
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
@@ -100,6 +104,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM3_Init();
   MX_USART2_UART_Init();
   MX_ADC1_Init();
@@ -119,11 +124,11 @@ int main(void)
   uint8_t last_button_3_state = GPIO_PIN_RESET; // Variable to store the last state of Button_3
 
   // Motor feedback variables
-  uint32_t current_count = 0; // Variable to store the current counter value of the encoder
-  uint32_t last_count = 0; // Variable to store the last counter value of the encoder
-  int16_t raw_delta = 0; // Variable to store the raw delta count (difference between current and last count)
-  int32_t motor_rpm = 0; // Variable to store the calculated motor RPM (Revolutions Per Minute)
-  int32_t rounded_rpm = 0; // Variable to store the rounded motor RPM for display purposes
+  volatile uint32_t current_count = 0; // Variable to store the current counter value of the encoder
+  volatile uint32_t last_count = 0; // Variable to store the last counter value of the encoder
+  volatile int16_t raw_delta = 0; // Variable to store the raw delta count (difference between current and last count)
+  volatile float motor_rpm = 0.0f; // Variable to store the calculated motor RPM (Revolutions Per Minute)
+  volatile int32_t rounded_rpm = 0; // Variable to store the rounded motor RPM for display purposes
   
   /* USER CODE END 2 */
 
@@ -148,7 +153,7 @@ int main(void)
     HAL_ADC_Stop(&hadc1); // Stop ADC conversion 
 
     // Tie the ADC value to the PWM duty cycle for LED brightness control
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, adc_value);
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 4095 - adc_value);
 
     // Calculate the duty percentage for RealTerm telemetry
     uint32_t duty_percentage = (adc_value * 100) / 4095; // Calculate duty cycle percentage
@@ -158,37 +163,46 @@ int main(void)
     uint8_t current_button_2_state = HAL_GPIO_ReadPin(Button_2_GPIO_Port, Button_2_Pin); // Current state of Button_2
     uint8_t current_button_3_state = HAL_GPIO_ReadPin(Button_3_GPIO_Port, Button_3_Pin); // Current state of Button_3
 
+    uint32_t current_time_ms = HAL_GetTick(); // Get the current time in milliseconds
+    static uint32_t last_button_1_press = 0;
+    static uint32_t last_button_2_press = 0;
+    static uint32_t last_button_3_press = 0;
+
     // Check for the falling edge of Button_1 (transition from not pressed to pressed)
     if (current_button_1_state == GPIO_PIN_RESET && last_button_1_state == GPIO_PIN_SET)
     {
-      // Button_1 is pressed, toggle LED_1 state
-      HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin);
-      HAL_Delay(50); // Add a small delay to avoid multiple toggles for a single press
 
+      if (current_time_ms - last_button_1_press >= 50) // Debounce check for Button_1
+      {
+        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
+        last_button_1_press = current_time_ms; // Update the last press time for Button_1
+      }
     }
 
     // Check for the falling edge of Button_2 (transition from not pressed to pressed)
     if (current_button_2_state == GPIO_PIN_RESET && last_button_2_state == GPIO_PIN_SET)
     {
-      // Button_2 is pressed, toggle LED_2 state
-      HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin);
-      HAL_Delay(50); // Add a small delay to avoid multiple toggles for a single press
-
+      if (current_time_ms - last_button_2_press >= 50) // Debounce check for Button_2
+      {
+        HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
+        last_button_2_press = current_time_ms; // Update the last press time for Button_2
+      }
     }
 
     // Check for the falling edge of Button_3 (transition from not pressed to pressed)
     if (current_button_3_state == GPIO_PIN_RESET && last_button_3_state == GPIO_PIN_SET)
     {
-      // Button_3 is pressed, toggle LED_3 state
-      HAL_GPIO_TogglePin(LED_3_GPIO_Port, LED_3_Pin);
-      HAL_Delay(50); // Add a small delay to avoid multiple toggles for a single press
-
+      if (current_time_ms - last_button_3_press >= 50) // Debounce check for Button_3
+      {
+        HAL_GPIO_TogglePin(LED_3_GPIO_Port, LED_3_Pin); // Toggle LED_3 state
+        last_button_3_press = current_time_ms; // Update the last press time for Button_3
+      }
     }
 
     // Update the tracking history for the next iteration
     last_button_1_state = current_button_1_state; // Update the last state of Button_1
     last_button_2_state = current_button_2_state; // Update the last state of Button_2
-    last_button_3_state = current_button_3_state; // Update the last state of
+    last_button_3_state = current_button_3_state; // Update the last state of Button_3
 
     // Press B1 to turn on LD2
     if (HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_SET)
@@ -200,31 +214,45 @@ int main(void)
       HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
     }
 
-    // Motor RPM Calculation
-    current_count = __HAL_TIM_GET_COUNTER(&htim4); // Get the current encoder count value
+    // Gated 100ms Non-blocking window for Motor RPM Calculation
+    static uint32_t last_rpm_time = 0; // Variable to store the last time the RPM was calculated
 
-    // Cast the counter data to a signed 16-bit integer to seamlessly handle backward rotation (negative delta counts)
-    raw_delta = (int16_t)(current_count - last_count); // Calculate the raw delta count
-    last_count = current_count; // Update the last count for the next iteration
-
-    // Math: (Pulses / Time Delta) / (Encoder CPR * Gear Ration) * 60 seconds
-    // Adjust the numbers below based on your specific Pololu RF-370 15370 gear ratio configuration
-    motor_rpm = ((float)raw_delta / 0.1f) / (48.0f * 47.0f) * 60.0f; // Calculate motor RPM
-
-    // Calculate the rounded RPM for display purposes
-    if (motor_rpm >= 0.0f)
+    if (current_time_ms - last_rpm_time >= 100) // Exactly 100ms (0.1s)
     {
-      rounded_rpm = (int32_t)(motor_rpm + 0.5f); // Round up for positive RPM values
-    }
-    else
-    {
-      rounded_rpm = (int32_t)(motor_rpm - 0.5f); // Round down for negative RPM values
+      last_rpm_time = current_time_ms; // Update the last RPM calculation time
+
+      current_count = __HAL_TIM_GET_COUNTER(&htim4); // Get the current encoder count value
+
+      // Handle 16-bit counter roll-overs cleanly
+      raw_delta = (int16_t)(current_count - last_count); // Calculate the raw delta count
+      last_count = current_count; // Update the last count for the next iteration
+
+      // Use the absolute value of the delta ticks to calculate pure speed magnitude
+      int16_t abs_delta = abs(raw_delta); // Get the absolute value of the raw delta count
+
+      // Math: Now safely matches the 0.1f time delta!
+      motor_rpm = ((float)abs_delta / 0.1f) / (48.0f * 9.68f) * 60.0f; // Calculate motor RPM
+
+      // Calculate the rounded RPM for display purposes
+      if (motor_rpm >= 0.0f)
+      {
+        rounded_rpm = (int32_t)(motor_rpm + 0.5f); // Round up for positive RPM values
+      }
+      else
+      {
+        rounded_rpm = (int32_t)(motor_rpm - 0.5f); // Round down for negative RPM values
+      }
     }
 
-    // Code for Real Term 
-    uint32_t current_time_ms = HAL_GetTick(); // Get the current time in milliseconds
+    // Code for RealTerm Telemetry Display using DMA UART Transmission
     if(current_time_ms - last_1s_toggle_time >= 1000) // Update every 1000 ms for a more responsive display
     {
+      if (huart2.gState == HAL_UART_STATE_BUSY_TX) // Check if UART is busy transmitting
+      {
+        // If UART is busy, skip this iteration to avoid data collision
+        continue;
+      }
+
       last_1s_toggle_time = current_time_ms; // Update the last toggle time
 
       // 1. Evaluate the hardware status of all three LEDs
@@ -232,32 +260,24 @@ int main(void)
       char* led2_str = (HAL_GPIO_ReadPin(LED_2_GPIO_Port, LED_2_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
       char* led3_str = (HAL_GPIO_ReadPin(LED_3_GPIO_Port, LED_3_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
 
-      // 2. Create an expanded buffer to handle the extra lines of text
-      char dash_msg[512];
-
-      // Wipe buffer to avoid residual data from previous transmissions
-      memset(dash_msg, 0, sizeof(dash_msg));
-
-      // 3. Format the complete telemetry packet with ANSI clear screen commands
-      snprintf(dash_msg, sizeof(dash_msg),
-          "\033[H"                  // Move cursor to top-left
-          "\033[2J"                 // Clear screen
+      int msg_len = snprintf(dma_tx_buffer, sizeof(dma_tx_buffer),
+          "\033[H\033[2J"                 // Move cursor to top-left and clear screen
           "==============================\r\n"
-          "     EMBEDDED SYSTEM TELEMETRY \r\n"
+          "     EMBEDDED TELEMETRY\r\n"
           "==============================\r\n"
-          " Potentiometer Reading : %4u   \r\n"
+          " Pot Value   : %4u   \r\n"
           "------------------------------\r\n"
-          " Status LED Pin _1     : %s   \r\n"
-          " Status LED Pin _2     : %s   \r\n"
-          " Status LED Pin _3     : %s   \r\n"
+          " LED 1       : %s   \r\n"
+          " LED 2       : %s   \r\n"
+          " LED 3       : %s   \r\n"
           "------------------------------\r\n"
-          " PWM Duty Cycle        : %3lu%% \r\n"
-          " Motor RPM             : %ld \r\n"
+          " PWM Duty    : %3lu%% \r\n"
+          " Motor RPM   : %ld \r\n"
           "==============================\r\n",
           adc_value, led1_str, led2_str, led3_str, duty_percentage, rounded_rpm);
 
       // 4. Transmit the complete string block to RealTerm
-      HAL_UART_Transmit(&huart2, (uint8_t*)dash_msg, strlen(dash_msg), 250);
+      HAL_UART_Transmit_DMA(&huart2, (uint8_t*)dma_tx_buffer, msg_len); // Transmit the telemetry data via DMA
     }
 
   }
@@ -500,6 +520,22 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
 
 }
 
