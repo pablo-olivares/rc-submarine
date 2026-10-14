@@ -10,3 +10,13 @@ Build/
 *.o
 *.su
 *.d
+
+# Python Ignore Paths
+__pycache__/
+*.py[cod]
+venv/
+.pytest_cache/
+.idea/
+desktop_app/.idea/
+desktop_app/.venv/
+desktop_app/venv/
