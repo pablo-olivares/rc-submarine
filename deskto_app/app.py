@@ -42,6 +42,8 @@ class FullTelemetryApp(ctk.CTk):
         self.pot_val = self.create_data_row(self.left_panel, "Potentiometer Input:", "0 / 4095")
         # PWM Duty Card
         self.pwm_val = self.create_data_row(self.left_panel, "PWM Duty Cycle:", "0%")
+        # CPU Load Benchmark Card
+        self.cpu_val = self.create_data_row(self.left_panel, "CPU Load Benchmark:", "0%", text_color="#d32f2f")
 
         # === RIGHT PANEL: Hardware Pins & Status ===
         self.right_panel = ctk.CTkFrame(self.grid_container, width=270)
@@ -99,13 +101,14 @@ class FullTelemetryApp(ctk.CTk):
                             data_fields = line.split(",")
 
                             # Match your exact 12-variable packet configuration
-                            if len(data_fields) == 12:
-                                rpm, pot, duty, led1, led2, led3, ax, ay, az, gx, gy, gz = data_fields
+                            if len(data_fields) == 13:
+                                rpm, pot, duty, led1, led2, led3, ax, ay, az, gx, gy, gz, cpu_load = data_fields
 
                                 # Update Left Panel
                                 self.rpm_val.configure(text=f"{rpm} RPM")
                                 self.pot_val.configure(text=f"{pot} / 4095")
                                 self.pwm_val.configure(text=f"{duty}%")
+                                self.cpu_val.configure(text=f"{cpu_load} %")
 
                                 # Update Right Panel (Color code matching states)
                                 self.led1_val.configure(text=led1, text_color="green" if "ON" in led1 else "gray")

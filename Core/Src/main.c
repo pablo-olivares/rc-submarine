@@ -46,6 +46,7 @@ ADC_HandleTypeDef hadc1;
 
 I2C_HandleTypeDef hi2c1;
 
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
@@ -82,6 +83,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -126,12 +128,16 @@ int main(void)
   MX_ADC1_Init();
   MX_TIM4_Init();
   MX_I2C1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   // Start the timer for PWM generation
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
   // Start the timer for periodic interrupts
   HAL_TIM_Base_Start(&htim3); // Start the timer
+
+  // Start the microsecond timer for CPU usage measurement
+  HAL_TIM_Base_Start(&htim2); // Start the microsecond timer
 
   HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL); // Start the encoder interface
 
@@ -161,6 +167,8 @@ int main(void)
 
   while (1)
   {
+    // Capture the microsecond timer value for CPU usage measurement
+    uint32_t loop_start_time = __HAL_TIM_GET_COUNTER(&htim2); // Get the current timer count at the start of the loop
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -282,7 +290,20 @@ int main(void)
       }
     }
 
-    // Code for RealTerm Telemetry Display using DMA UART Transmission
+    // Capture the timestamp at the end of the loop for CPU usage calculation
+    uint32_t loop_end_time = __HAL_TIM_GET_COUNTER(&htim2); // Get the current timer count at the end of the loop
+
+    // Accumulate active microseconds for CPU usage calculation (handling rare 32-bit roll-overs)
+    if (loop_end_time >= loop_start_time)
+    {
+      cpu_active_us += (loop_end_time - loop_start_time); // Normal case: no roll-over
+    }
+    else
+    {
+      cpu_active_us += ((4294967295 - loop_start_time) + loop_end_time + 1); // Handle roll-over case
+    }
+
+    // Code for RealTerm Telemetry Display using DMA UART Transmission to PyCharm UI
     if(current_time_ms - last_1s_toggle_time >= 1000) // Update every 1000 ms for a more responsive display
     {
       // If the ture callbak flag isn't set, drp this frame safely
@@ -292,7 +313,13 @@ int main(void)
         continue;
       }
 
-      last_1s_toggle_time = current_time_ms; // Update the last toggle time
+      // Math: (Active Microseconds / 1,000,000 Microseconds in a second) * 100
+      // Simplified: Active Microseconds / 10,000 = CPU Usage Percentage
+      cpu_usage_percent = (cpu_active_us / 10000); 
+      if (cpu_usage_percent > 100) cpu_usage_percent = 100; // Cap CPU usage at 100%
+
+      // Reset the active microseconds counter for the next 1-second interval
+      cpu_active_us = 0; // Reset the active microseconds counter
 
       // 1. Evaluate the hardware status of all three LEDs
       char* led1_str = (HAL_GPIO_ReadPin(LED_1_GPIO_Port, LED_1_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
@@ -320,11 +347,16 @@ int main(void)
           adc_value, led1_str, led2_str, led3_str, duty_percentage, rounded_rpm);
       */
 
+      // Testing HAL Delay
+      //HAL_Delay(50); // Delay for 50 milliseconds
+
       // Updated Machine-Readable Telemetry Format: RPM, Pot, Duty, LED1, LED2, LED3, AccelX, AccelY, AccelZ, GyroX, GyroY, GyroZ
       int msg_len = snprintf(dma_tx_buffer, sizeof(dma_tx_buffer),
-        "%ld,%u,%lu,%s,%s,%s,%d,%d,%d,%d,%d,%d\r\n",
+        "%ld,%u,%lu,%s,%s,%s,%d,%d,%d,%d,%d,%d,%lu\r\n",
           rounded_rpm, adc_value, duty_percentage, led1_str, led2_str, led3_str, 
-          accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z);
+          accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z, cpu_usage_percent);
+          
+      last_1s_toggle_time = current_time_ms; // Update the last toggle time
 
       // Lock the barrier right before launching the transmission pipelin
       uart_tx_ready = 0; // Clear the UART ready flag before starting transmission
@@ -466,6 +498,51 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 47;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
 
 }
 
