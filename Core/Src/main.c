@@ -44,6 +44,8 @@
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
 
+I2C_HandleTypeDef hi2c1;
+
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
@@ -57,6 +59,18 @@ uint16_t last_3s_toggle_time = 0; // Variable to store the last toggle time for 
 uint16_t adc_value = 0; // Variable to store the ADC value
 char dma_tx_buffer[512]; // Buffer for DMA transmission
 volatile uint8_t uart_tx_ready = 1; // Flag to indicate if UART is ready for transmission
+
+  // Define raw storage variables for accelerometer and gyroscope data
+  uint8_t raw_sensor_data[14];
+  volatile int16_t accel_x = 0;
+  volatile int16_t accel_y = 0;
+  volatile int16_t accel_z = 0;
+  volatile int16_t gyro_x = 0;
+  volatile int16_t gyro_y = 0;
+  volatile int16_t gyro_z = 0;
+
+  volatile uint32_t cpu_active_us = 0;
+  volatile uint32_t cpu_usage_percent = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -67,6 +81,7 @@ static void MX_TIM3_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -110,6 +125,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_ADC1_Init();
   MX_TIM4_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
   // Start the timer for PWM generation
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
@@ -131,6 +147,13 @@ int main(void)
   volatile float motor_rpm = 0.0f; // Variable to store the calculated motor RPM (Revolutions Per Minute)
   volatile int32_t rounded_rpm = 0; // Variable to store the rounded motor RPM for display purposes
   
+  // MPU6050 I2C Address is 0x68. Left-shift by 1 for STM32 HAL I2C functions (7-bit addressing)
+  uint8_t mpu_addr = 0xD0;
+  uint8_t wake_command = 0x00;
+
+  // Wake up the sensor by writing 0x00 to the PWR_MGMT_1 register (0x6B)
+  HAL_I2C_Mem_Write(&hi2c1, mpu_addr, 0x6B, I2C_MEMADD_SIZE_8BIT, &wake_command, 1, 100);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -243,6 +266,20 @@ int main(void)
       {
         rounded_rpm = (int32_t)(motor_rpm - 0.5f); // Round down for negative RPM values
       }
+      
+      // Read 14 bytes of sensor registers:
+      // 0x3B/0x3C (X), 0x3D/0x3E (Y), 0x3F/0x40 (Z)
+      if (HAL_I2C_Mem_Read(&hi2c1, mpu_addr, 0x3B, I2C_MEMADD_SIZE_8BIT, raw_sensor_data, 14, 50) == HAL_OK)
+      {
+        // Reconstruct the 8-bit high and low registers back into 16-bit signed integers
+        accel_x = (int16_t)(raw_sensor_data[0] << 8 | raw_sensor_data[1]);
+        accel_y = (int16_t)(raw_sensor_data[2] << 8 | raw_sensor_data[3]);
+        accel_z = (int16_t)(raw_sensor_data[4] << 8 | raw_sensor_data[5]);
+
+        gyro_x = (int16_t)(raw_sensor_data[8] << 8 | raw_sensor_data[9]);
+        gyro_y = (int16_t)(raw_sensor_data[10] << 8 | raw_sensor_data[11]);
+        gyro_z = (int16_t)(raw_sensor_data[12] << 8 | raw_sensor_data[13]);
+      }
     }
 
     // Code for RealTerm Telemetry Display using DMA UART Transmission
@@ -265,6 +302,7 @@ int main(void)
       // Forcebly clear the array with zeores before every single line
       memset(dma_tx_buffer, 0, sizeof(dma_tx_buffer)); // Clear the DMA transmission buffer
 
+      /*
       int msg_len = snprintf(dma_tx_buffer, sizeof(dma_tx_buffer),
           "\033[H\033[2J"                 // Move cursor to top-left and clear screen
           "==============================\r\n"
@@ -280,6 +318,13 @@ int main(void)
           " Motor RPM   : %-5ld \r\n"
           "==============================\r\n",
           adc_value, led1_str, led2_str, led3_str, duty_percentage, rounded_rpm);
+      */
+
+      // Updated Machine-Readable Telemetry Format: RPM, Pot, Duty, LED1, LED2, LED3, AccelX, AccelY, AccelZ, GyroX, GyroY, GyroZ
+      int msg_len = snprintf(dma_tx_buffer, sizeof(dma_tx_buffer),
+        "%ld,%u,%lu,%s,%s,%s,%d,%d,%d,%d,%d,%d\r\n",
+          rounded_rpm, adc_value, duty_percentage, led1_str, led2_str, led3_str, 
+          accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z);
 
       // Lock the barrier right before launching the transmission pipelin
       uart_tx_ready = 0; // Clear the UART ready flag before starting transmission
@@ -391,6 +436,40 @@ static void MX_ADC1_Init(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
   * @brief TIM3 Initialization Function
   * @param None
   * @retval None
@@ -477,11 +556,11 @@ static void MX_TIM4_Init(void)
   sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
-  sConfig.IC1Filter = 15;
+  sConfig.IC1Filter = 0;
   sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
-  sConfig.IC2Filter = 15;
+  sConfig.IC2Filter = 0;
   if (HAL_TIM_Encoder_Init(&htim4, &sConfig) != HAL_OK)
   {
     Error_Handler();

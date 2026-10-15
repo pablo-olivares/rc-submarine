@@ -4,121 +4,121 @@ import customtkinter as ctk
 import serial
 
 # --- CONFIGURATION ---
-# Change 'COM3' to match your actual STM32 virtual COM port (e.g., '/dev/ttyACM0' on Linux/Mac)
-SERIAL_PORT = "COM3"
+SERIAL_PORT = "COM3"  # <-- Double-check your COM port number!
 BAUD_RATE = 115200
 
-# Initialize CustomTkinter Window Theme
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 
-class TelemetryApp(ctk.CTk):
+class FullTelemetryApp(ctk.CTk):
 
     def __init__(self):
         super().__init__()
 
-        self.title("STM32 Motor & IMU Telemetry Panel")
-        self.geometry("500x400")
+        self.title("RC Submarine Master Telemetry Center")
+        self.geometry("600x550")
 
         # --- UI LAYOUT DESIGN ---
         self.header_label = ctk.CTkLabel(
-            self, text="SYSTEM TELEMETRY", font=ctk.CTkFont(size=20, weight="bold")
+            self, text="RC SUBMARINE SYSTEM DATA", font=ctk.CTkFont(size=22, weight="bold")
         )
-        self.header_label.pack(pady=20)
+        self.header_label.pack(pady=15)
 
-        # Motor RPM Display Box
-        self.rpm_frame = ctk.CTkFrame(self)
-        self.rpm_frame.pack(fill="x", padx=40, pady=10)
-        self.rpm_title = ctk.CTkLabel(
-            self.rpm_frame, text="Motor Output Speed:", font=ctk.CTkFont(size=14)
-        )
-        self.rpm_title.pack(side="left", padx=20, pady=10)
-        self.rpm_val = ctk.CTkLabel(
-            self.rpm_frame,
-            text="0 RPM",
-            font=ctk.CTkFont(size=22, weight="bold"),
-            text_color="#1f538d",
-        )
-        self.rpm_val.pack(side="right", padx=20, pady=10)
+        # Main Grid Container to split data side-by-side
+        self.grid_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.grid_container.pack(fill="both", expand=True, padx=20, pady=5)
 
-        # Potentiometer / PWM Display Box
-        self.pot_frame = ctk.CTkFrame(self)
-        self.pot_frame.pack(fill="x", padx=40, pady=10)
-        self.pot_title = ctk.CTkLabel(
-            self.pot_frame, text="Potentiometer (ADC):", font=ctk.CTkFont(size=14)
-        )
-        self.pot_title.pack(side="left", padx=20, pady=10)
-        self.pot_val = ctk.CTkLabel(
-            self.pot_frame,
-            text="0",
-            font=ctk.CTkFont(size=18, weight="bold"),
-        )
-        self.pot_val.pack(side="right", padx=20, pady=10)
+        # === LEFT PANEL: Motor & Power Metrics ===
+        self.left_panel = ctk.CTkFrame(self.grid_container, width=270)
+        self.left_panel.pack(side="left", fill="both", expand=True, padx=10, pady=10)
 
-        # MPU6050 Accelerometer Display Box
-        self.imu_frame = ctk.CTkFrame(self)
-        self.imu_frame.pack(fill="x", padx=40, pady=10)
-        self.imu_title = ctk.CTkLabel(
-            self.imu_frame, text="IMU Accelerometer:", font=ctk.CTkFont(size=14)
-        )
-        self.imu_title.pack(anchor="w", padx=20, pady=5)
+        self.motor_lbl = ctk.CTkLabel(self.left_panel, text="PROMOTION & POWER", font=ctk.CTkFont(size=14, weight="bold"))
+        self.motor_lbl.pack(pady=10)
 
-        self.imu_val = ctk.CTkLabel(
-            self.imu_frame,
-            text="X: 0  |  Y: 0  |  Z: 0",
-            font=ctk.CTkFont(size=16, family="Courier"),
-        )
-        self.imu_val.pack(pady=10)
+        # RPM Card
+        self.rpm_val = self.create_data_row(self.left_panel, "Shaft Velocity:", "0 RPM", text_color="#1f538d", size=20)
+        # Pot Card
+        self.pot_val = self.create_data_row(self.left_panel, "Potentiometer Input:", "0 / 4095")
+        # PWM Duty Card
+        self.pwm_val = self.create_data_row(self.left_panel, "PWM Duty Cycle:", "0%")
+
+        # === RIGHT PANEL: Hardware Pins & Status ===
+        self.right_panel = ctk.CTkFrame(self.grid_container, width=270)
+        self.right_panel.pack(side="right", fill="both", expand=True, padx=10, pady=10)
+
+        self.status_lbl = ctk.CTkLabel(self.right_panel, text="HARDWARE STATE PINS", font=ctk.CTkFont(size=14, weight="bold"))
+        self.status_lbl.pack(pady=10)
+
+        # LED Status Rows
+        self.led1_val = self.create_data_row(self.right_panel, "Status LED 1:", "OFF")
+        self.led2_val = self.create_data_row(self.right_panel, "Status LED 2:", "OFF")
+        self.led3_val = self.create_data_row(self.right_panel, "Status LED 3:", "OFF")
+
+        # === BOTTOM PANEL: IMU Navigation Data ===
+        self.imu_panel = ctk.CTkFrame(self)
+        self.imu_panel.pack(fill="x", padx=30, pady=15)
+
+        self.imu_lbl = ctk.CTkLabel(self.imu_panel, text="GY-521 IMU NAVIGATION VECTOR", font=ctk.CTkFont(size=14, weight="bold"))
+        self.imu_lbl.pack(pady=5)
+
+        self.accel_val = ctk.CTkLabel(self.imu_panel, text="Accel ──> X: 0 | Y: 0 | Z: 0", font=ctk.CTkFont(size=14, family="Courier"))
+        self.accel_val.pack(pady=2)
+
+        self.gyro_val = ctk.CTkLabel(self.imu_panel, text="Gyro  ──> X: 0 | Y: 0 | Z: 0", font=ctk.CTkFont(size=14, family="Courier"))
+        self.gyro_val.pack(pady=8)
 
         # Status Footer Bar
-        self.status_label = ctk.CTkLabel(
-            self, text="Connecting to STM32...", text_color="yellow"
-        )
-        self.status_label.pack(side="bottom", pady=10)
+        self.status_label = ctk.CTkLabel(self, text="Awaiting handshake with STM32...", text_color="yellow")
+        self.status_label.pack(side="bottom", pady=5)
 
         # --- DATA PIPELINE THREADING ---
         self.running = True
-        self.serial_thread = threading.Thread(
-            target=self.read_serial_data, daemon=True
-        )
+        self.serial_thread = threading.Thread(target=self.read_serial_data, daemon=True)
         self.serial_thread.start()
 
+    def create_data_row(self, parent, label_text, default_val, text_color=None, size=14):
+        """Helper function to cleanly pack structured visual data frames."""
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.pack(fill="x", padx=15, pady=6)
+        lbl = ctk.CTkLabel(frame, text=label_text, font=ctk.CTkFont(size=12))
+        lbl.pack(side="left", padx=5)
+        val = ctk.CTkLabel(frame, text=default_val, font=ctk.CTkFont(size=size, weight="bold"), text_color=text_color)
+        val.pack(side="right", padx=5)
+        return val
+
     def read_serial_data(self):
-        """Background thread worker to poll raw data packets from the serial cable channel."""
         while self.running:
             try:
-                with serial.Serial(
-                    SERIAL_PORT, BAUD_RATE, timeout=1.5
-                ) as ser:
-                    self.status_label.configure(
-                        text=f"Connected to {SERIAL_PORT}", text_color="green"
-                    )
+                with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1.5) as ser:
+                    self.status_label.configure(text=f"CONNECTED TO {SERIAL_PORT} (STREAM LIVE)", text_color="green")
 
                     while self.running:
-                        line = (
-                            ser.readline().decode("utf-8", errors="ignore").strip()
-                        )
+                        line = ser.readline().decode("utf-8", errors="ignore").strip()
                         if line:
-                            # Split comma separated elements back into array variables
                             data_fields = line.split(",")
 
-                            if len(data_fields) == 5:
-                                rpm, pot, acc_x, acc_y, acc_z = data_fields
+                            # Match your exact 12-variable packet configuration
+                            if len(data_fields) == 12:
+                                rpm, pot, duty, led1, led2, led3, ax, ay, az, gx, gy, gz = data_fields
 
-                                # Safely push UI graphical changes back onto main loop tree
+                                # Update Left Panel
                                 self.rpm_val.configure(text=f"{rpm} RPM")
                                 self.pot_val.configure(text=f"{pot} / 4095")
-                                self.imu_val.configure(
-                                    text=f"X: {acc_x} | Y: {acc_y} | Z: {acc_z}"
-                                )
+                                self.pwm_val.configure(text=f"{duty}%")
+
+                                # Update Right Panel (Color code matching states)
+                                self.led1_val.configure(text=led1, text_color="green" if "ON" in led1 else "gray")
+                                self.led2_val.configure(text=led2, text_color="green" if "ON" in led2 else "gray")
+                                self.led3_val.configure(text=led3, text_color="green" if "ON" in led3 else "gray")
+
+                                # Update Bottom IMU Vectors
+                                self.accel_val.configure(text=f"Accel ──> X: {ax.strip()} | Y: {ay.strip()} | Z: {az.strip()}")
+                                self.gyro_val.configure(text=f"Gyro  ──> X: {gx.strip()} | Y: {gy.strip()} | Z: {gz.strip()}")
 
             except (serial.SerialException, IndexError):
-                # Gracefully handle disconnects/reboots of the development board
-                self.status_label.configure(
-                    text="Connection Lost. Retrying...", text_color="red"
-                )
-                time.sleep(2.0)
+                self.status_label.configure(text="CONNECTION BREAKDOWN. Retrying link pipeline...", text_color="red")
+                time.sleep(1.5)
 
     def destroy(self):
         self.running = False
@@ -126,5 +126,5 @@ class TelemetryApp(ctk.CTk):
 
 
 if __name__ == "__main__":
-    app = TelemetryApp()
+    app = FullTelemetryApp()
     app.mainloop()
