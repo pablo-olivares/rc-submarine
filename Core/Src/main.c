@@ -72,6 +72,16 @@ volatile uint8_t uart_tx_ready = 1; // Flag to indicate if UART is ready for tra
 
   volatile uint32_t cpu_active_us = 0;
   volatile uint32_t cpu_usage_percent = 0;
+
+  // Define the clear, readable states for motor controller
+  typedef enum {
+    MOTOR_STOPPED = 0,
+    MOTOR_FORWARD = 1,
+    MOTOR_REVERSE = 2
+  } MotorState_t;
+
+  volatile MotorState_t motor_status = MOTOR_STOPPED; // Variable to store the current motor state
+  char* motor_state_str = "STOPPED"; // String representation of the motor state for telemetry display
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -208,6 +218,18 @@ int main(void)
       {
         HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
         last_button_1_press = current_time_ms; // Update the last press time for Button_1
+
+        // If already moving forward, toggle to stop. Otherwise, set to forward.
+        if (motor_status == MOTOR_FORWARD)
+        {
+          motor_status = MOTOR_STOPPED;
+          motor_state_str = "STOPPED";
+        }
+        else
+        {
+          motor_status = MOTOR_FORWARD;
+          motor_state_str = "FORWARD";
+        }
       }
     }
 
@@ -218,6 +240,18 @@ int main(void)
       {
         HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
         last_button_2_press = current_time_ms; // Update the last press time for Button_2
+
+        // If already moving reverse, toggle to stop. Otherwise, set to reverse.
+        if (motor_status == MOTOR_REVERSE)
+        {
+          motor_status = MOTOR_STOPPED;
+          motor_state_str = "STOPPED";
+        }
+        else
+        {
+          motor_status = MOTOR_REVERSE;
+          motor_state_str = "REVERSE";
+        }
       }
     }
 
@@ -229,6 +263,20 @@ int main(void)
         HAL_GPIO_TogglePin(LED_3_GPIO_Port, LED_3_Pin); // Toggle LED_3 state
         last_button_3_press = current_time_ms; // Update the last press time for Button_3
       }
+    }
+
+      // Motor Control Logic
+    // Status: Running Forward (Button 1 Pressed & Button 2 Not Pressed)
+    // Status: Running Reverse (Button 1 Not Pressed & Button 2 Pressed)
+    // Status: Stopped (Both Button 1 and Button 2 Pressed)
+
+    // Resolve the state machine into an explicit text string for telemetry display
+    switch (motor_status)
+    {
+      case MOTOR_STOPPED: motor_state_str = "STOPPED"; break;
+      case MOTOR_FORWARD: motor_state_str = "FORWARD"; break;
+      case MOTOR_REVERSE: motor_state_str = "REVERSE"; break;
+      default:            motor_state_str = "UNKNOWN"; break;
     }
 
     // Update the tracking history for the next iteration
@@ -352,9 +400,9 @@ int main(void)
 
       // Updated Machine-Readable Telemetry Format: RPM, Pot, Duty, LED1, LED2, LED3, AccelX, AccelY, AccelZ, GyroX, GyroY, GyroZ
       int msg_len = snprintf(dma_tx_buffer, sizeof(dma_tx_buffer),
-        "%ld,%u,%lu,%s,%s,%s,%d,%d,%d,%d,%d,%d,%lu\r\n",
+        "%ld,%u,%lu,%s,%s,%s,%d,%d,%d,%d,%d,%d,%lu,%s\r\n",
           rounded_rpm, adc_value, duty_percentage, led1_str, led2_str, led3_str, 
-          accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z, cpu_usage_percent);
+          accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z, cpu_usage_percent, motor_state_str);
           
       last_1s_toggle_time = current_time_ms; // Update the last toggle time
 

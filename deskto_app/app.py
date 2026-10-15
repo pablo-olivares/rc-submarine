@@ -44,6 +44,8 @@ class FullTelemetryApp(ctk.CTk):
         self.pwm_val = self.create_data_row(self.left_panel, "PWM Duty Cycle:", "0%")
         # CPU Load Benchmark Card
         self.cpu_val = self.create_data_row(self.left_panel, "CPU Load Benchmark:", "0%", text_color="#d32f2f")
+        # Motor State Operational Mode Card
+        self.state_val = self.create_data_row(self.left_panel, "Motor Control State:", "STOPPED",text_color="#ff9800")
 
         # === RIGHT PANEL: Hardware Pins & Status ===
         self.right_panel = ctk.CTkFrame(self.grid_container, width=270)
@@ -101,14 +103,23 @@ class FullTelemetryApp(ctk.CTk):
                             data_fields = line.split(",")
 
                             # Match your exact 12-variable packet configuration
-                            if len(data_fields) == 13:
-                                rpm, pot, duty, led1, led2, led3, ax, ay, az, gx, gy, gz, cpu_load = data_fields
+                            if len(data_fields) == 14:
+                                rpm, pot, duty, led1, led2, led3, ax, ay, az, gx, gy, gz, cpu_load, m_state = data_fields
 
                                 # Update Left Panel
                                 self.rpm_val.configure(text=f"{rpm} RPM")
                                 self.pot_val.configure(text=f"{pot} / 4095")
                                 self.pwm_val.configure(text=f"{duty}%")
                                 self.cpu_val.configure(text=f"{cpu_load} %")
+
+                                # Dynamic Color Assignment for Operational States
+                                m_state = m_state.strip()
+                                if "FORWARD" in m_state:
+                                    self.state_val.configure(text=m_state, text_color="#4acf50") # Bright Green
+                                elif "REVERSE" in m_state:
+                                    self.state_val.configure(text=m_state, text_color="#f44336") # Red
+                                else:
+                                    self.state_val.configure(text=m_state, text_color="#ff9800") # Amber Orange
 
                                 # Update Right Panel (Color code matching states)
                                 self.led1_val.configure(text=led1, text_color="green" if "ON" in led1 else "gray")
