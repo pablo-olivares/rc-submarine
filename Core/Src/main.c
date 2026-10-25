@@ -24,6 +24,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "gy521_driver.h"
+#include "stm32f4xx_hal_def.h"
+#include "stm32f4xx_hal_gpio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -61,17 +64,10 @@ uint16_t adc_value = 0; // Variable to store the ADC value
 char dma_tx_buffer[512]; // Buffer for DMA transmission
 volatile uint8_t uart_tx_ready = 1; // Flag to indicate if UART is ready for transmission
 
-  // Define raw storage variables for accelerometer and gyroscope data
-  uint8_t raw_sensor_data[14];
-  volatile int16_t accel_x = 0;
-  volatile int16_t accel_y = 0;
-  volatile int16_t accel_z = 0;
-  volatile int16_t gyro_x = 0;
-  volatile int16_t gyro_y = 0;
-  volatile int16_t gyro_z = 0;
+GY521_Data_t imu_metrics = {0};;
 
-  volatile uint32_t cpu_active_us = 0;
-  volatile uint32_t cpu_usage_percent = 0;
+volatile uint32_t cpu_active_us = 0;
+volatile uint32_t cpu_usage_percent = 0;
 
   // Define the clear, readable states for motor controller
   typedef enum {
@@ -162,13 +158,16 @@ int main(void)
   volatile int16_t raw_delta = 0; // Variable to store the raw delta count (difference between current and last count)
   volatile float motor_rpm = 0.0f; // Variable to store the calculated motor RPM (Revolutions Per Minute)
   volatile int32_t rounded_rpm = 0; // Variable to store the rounded motor RPM for display purposes
-  
-  // MPU6050 I2C Address is 0x68. Left-shift by 1 for STM32 HAL I2C functions (7-bit addressing)
-  uint8_t mpu_addr = 0xD0;
-  uint8_t wake_command = 0x00;
 
-  // Wake up the sensor by writing 0x00 to the PWR_MGMT_1 register (0x6B)
-  HAL_I2C_Mem_Write(&hi2c1, mpu_addr, 0x6B, I2C_MEMADD_SIZE_8BIT, &wake_command, 1, 100);
+  if (GY521_Init_Advanced(&hi2c1) != HAL_OK)
+  {
+    HAL_GPIO_WritePin(LED_3_GPIO_Port, LED_3_Pin, GPIO_PIN_SET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(LED_3_GPIO_Port, LED_3_Pin, GPIO_PIN_RESET);
+  }
+
 
   /* USER CODE END 2 */
 
@@ -176,101 +175,74 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 
   while (1)
-  {
+{
     // Capture the microsecond timer value for CPU usage measurement
-    uint32_t loop_start_time = __HAL_TIM_GET_COUNTER(&htim2); // Get the current timer count at the start of the loop
+    uint32_t loop_start_time = __HAL_TIM_GET_COUNTER(&htim2);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
-    // ADC Conversion and UART Transmission
-    HAL_ADC_Start(&hadc1); // Start ADC conversion
-    // Wait for the conversion to complete
+    // ADC Conversion 
+    HAL_ADC_Start(&hadc1);
     if (HAL_ADC_PollForConversion(&hadc1, 100) == HAL_OK)
     {
-      // Conversion completed successfully
-      adc_value = HAL_ADC_GetValue(&hadc1); // Get the ADC value
+      adc_value = HAL_ADC_GetValue(&hadc1);
     }
-
-    HAL_ADC_Stop(&hadc1); // Stop ADC conversion 
+    HAL_ADC_Stop(&hadc1);
 
     // Tie the ADC value to the PWM duty cycle for LED brightness control
     __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 4095 - adc_value);
 
     // Calculate the duty percentage for RealTerm telemetry
-    uint32_t duty_percentage = (adc_value * 100) / 4095; // Calculate duty cycle percentage
+    uint32_t duty_percentage = (adc_value * 100) / 4095;
 
     // Read the current hardware state of buttons
-    uint8_t current_button_1_state = HAL_GPIO_ReadPin(Button_1_GPIO_Port, Button_1_Pin); // Current state of Button_1
-    uint8_t current_button_2_state = HAL_GPIO_ReadPin(Button_2_GPIO_Port, Button_2_Pin); // Current state of Button_2
-    uint8_t current_button_3_state = HAL_GPIO_ReadPin(Button_3_GPIO_Port, Button_3_Pin); // Current state of Button_3
+    uint8_t current_button_1_state = HAL_GPIO_ReadPin(Button_1_GPIO_Port, Button_1_Pin);
+    uint8_t current_button_2_state = HAL_GPIO_ReadPin(Button_2_GPIO_Port, Button_2_Pin);
+    uint8_t current_button_3_state = HAL_GPIO_ReadPin(Button_3_GPIO_Port, Button_3_Pin);
 
-    uint32_t current_time_ms = HAL_GetTick(); // Get the current time in milliseconds
+    uint32_t current_time_ms = HAL_GetTick();
     static uint32_t last_button_1_press = 0;
     static uint32_t last_button_2_press = 0;
     static uint32_t last_button_3_press = 0;
 
-    // Check for the falling edge of Button_1 (transition from not pressed to pressed)
+    // Check for the falling edge of Button_1
     if (current_button_1_state == GPIO_PIN_RESET && last_button_1_state == GPIO_PIN_SET)
     {
-
-      if (current_time_ms - last_button_1_press >= 50) // Debounce check for Button_1
+      if (current_time_ms - last_button_1_press >= 50)
       {
-        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin); // Toggle LED_1 state
-        last_button_1_press = current_time_ms; // Update the last press time for Button_1
+        HAL_GPIO_TogglePin(LED_1_GPIO_Port, LED_1_Pin);
+        last_button_1_press = current_time_ms;
 
-        // If already moving forward, toggle to stop. Otherwise, set to forward.
-        if (motor_status == MOTOR_FORWARD)
-        {
-          motor_status = MOTOR_STOPPED;
-          motor_state_str = "STOPPED";
-        }
-        else
-        {
-          motor_status = MOTOR_FORWARD;
-          motor_state_str = "FORWARD";
-        }
+        if (motor_status == MOTOR_FORWARD) motor_status = MOTOR_STOPPED;
+        else                               motor_status = MOTOR_FORWARD;
       }
     }
 
-    // Check for the falling edge of Button_2 (transition from not pressed to pressed)
+    // Check for the falling edge of Button_2
     if (current_button_2_state == GPIO_PIN_RESET && last_button_2_state == GPIO_PIN_SET)
     {
-      if (current_time_ms - last_button_2_press >= 50) // Debounce check for Button_2
+      if (current_time_ms - last_button_2_press >= 50)
       {
-        HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin); // Toggle LED_2 state
-        last_button_2_press = current_time_ms; // Update the last press time for Button_2
+        HAL_GPIO_TogglePin(LED_2_GPIO_Port, LED_2_Pin);
+        last_button_2_press = current_time_ms;
 
-        // If already moving reverse, toggle to stop. Otherwise, set to reverse.
-        if (motor_status == MOTOR_REVERSE)
-        {
-          motor_status = MOTOR_STOPPED;
-          motor_state_str = "STOPPED";
-        }
-        else
-        {
-          motor_status = MOTOR_REVERSE;
-          motor_state_str = "REVERSE";
-        }
+        if (motor_status == MOTOR_REVERSE) motor_status = MOTOR_STOPPED;
+        else                               motor_status = MOTOR_REVERSE;
       }
     }
 
-    // Check for the falling edge of Button_3 (transition from not pressed to pressed)
+    // Check for the falling edge of Button_3
     if (current_button_3_state == GPIO_PIN_RESET && last_button_3_state == GPIO_PIN_SET)
     {
-      if (current_time_ms - last_button_3_press >= 50) // Debounce check for Button_3
+      if (current_time_ms - last_button_3_press >= 50)
       {
-        HAL_GPIO_TogglePin(LED_3_GPIO_Port, LED_3_Pin); // Toggle LED_3 state
-        last_button_3_press = current_time_ms; // Update the last press time for Button_3
+        HAL_GPIO_TogglePin(LED_3_GPIO_Port, LED_3_Pin);
+        last_button_3_press = current_time_ms;
       }
     }
 
-      // Motor Control Logic
-    // Status: Running Forward (Button 1 Pressed & Button 2 Not Pressed)
-    // Status: Running Reverse (Button 1 Not Pressed & Button 2 Pressed)
-    // Status: Stopped (Both Button 1 and Button 2 Pressed)
-
-    // Resolve the state machine into an explicit text string for telemetry display
+    // Resolve the state machine into an explicit text string
     switch (motor_status)
     {
       case MOTOR_STOPPED: motor_state_str = "STOPPED"; break;
@@ -280,9 +252,9 @@ int main(void)
     }
 
     // Update the tracking history for the next iteration
-    last_button_1_state = current_button_1_state; // Update the last state of Button_1
-    last_button_2_state = current_button_2_state; // Update the last state of Button_2
-    last_button_3_state = current_button_3_state; // Update the last state of Button_3
+    last_button_1_state = current_button_1_state;
+    last_button_2_state = current_button_2_state;
+    last_button_3_state = current_button_3_state;
 
     // Press B1 to turn on LD2
     if (HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_SET)
@@ -294,128 +266,86 @@ int main(void)
       HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
     }
 
-    // Gated 100ms Non-blocking window for Motor RPM Calculation
-    static uint32_t last_rpm_time = 0; // Variable to store the last time the RPM was calculated
-
-    if (current_time_ms - last_rpm_time >= 100) // Exactly 100ms (0.1s)
+    // =================================================================
+    // FIXED INTERVAL 1: HIGH-SPEED 20ms TELEMETRY & IMU SAMPLING (50Hz)
+    // =================================================================
+    static uint32_t last_rpm_time = 0;
+    if (current_time_ms - last_rpm_time >= 20) 
     {
-      last_rpm_time = current_time_ms; // Update the last RPM calculation time
+      // CRITICAL FIX: Always advance the clock interval independently of UART hardware readiness
+      last_rpm_time = current_time_ms; 
 
-      current_count = __HAL_TIM_GET_COUNTER(&htim4); // Get the current encoder count value
+      current_count = __HAL_TIM_GET_COUNTER(&htim4);
+      raw_delta = (int16_t)(current_count - last_count);
+      last_count = current_count;
+      int16_t abs_delta = abs(raw_delta);
 
-      // Handle 16-bit counter roll-overs cleanly
-      raw_delta = (int16_t)(current_count - last_count); // Calculate the raw delta count
-      last_count = current_count; // Update the last count for the next iteration
+      // RPM delta tracking matching the 0.02s step
+      motor_rpm = ((float)abs_delta / 0.02f) / (48.0f * 9.68f) * 60.0f;
 
-      // Use the absolute value of the delta ticks to calculate pure speed magnitude
-      int16_t abs_delta = abs(raw_delta); // Get the absolute value of the raw delta count
+      if (motor_rpm >= 0.0f) rounded_rpm = (int32_t)(motor_rpm + 0.5f);
+      else                   rounded_rpm = (int32_t)(motor_rpm - 0.5f);
 
-      // Math: Now safely matches the 0.1f time delta!
-      motor_rpm = ((float)abs_delta / 0.1f) / (48.0f * 9.68f) * 60.0f; // Calculate motor RPM
+      // Execute the single burst transaction safetly over the bus
+      HAL_StatusTypeDef i2c_status = GY521_Read_Burst(&hi2c1, &imu_metrics);
 
-      // Calculate the rounded RPM for display purposes
-      if (motor_rpm >= 0.0f)
+      // Handle bad frames
+      if (i2c_status != HAL_OK)
       {
-        rounded_rpm = (int32_t)(motor_rpm + 0.5f); // Round up for positive RPM values
+        HAL_GPIO_WritePin(LED_3_GPIO_Port, LED_3_Pin, GPIO_PIN_SET); // Turn on LED_1 to indicate I2C error
       }
       else
       {
-        rounded_rpm = (int32_t)(motor_rpm - 0.5f); // Round down for negative RPM values
+        HAL_GPIO_WritePin(LED_3_GPIO_Port, LED_3_Pin, GPIO_PIN_RESET); // Turn off LED_1 to indicate I2C success
       }
-      
-      // Read 14 bytes of sensor registers:
-      // 0x3B/0x3C (X), 0x3D/0x3E (Y), 0x3F/0x40 (Z)
-      if (HAL_I2C_Mem_Read(&hi2c1, mpu_addr, 0x3B, I2C_MEMADD_SIZE_8BIT, raw_sensor_data, 14, 50) == HAL_OK)
+            
+      // ONLY attempt a transmission pipeline write if the previous DMA transfer is completely clear
+      if (uart_tx_ready == 1)
       {
-        // Reconstruct the 8-bit high and low registers back into 16-bit signed integers
-        accel_x = (int16_t)(raw_sensor_data[0] << 8 | raw_sensor_data[1]);
-        accel_y = (int16_t)(raw_sensor_data[2] << 8 | raw_sensor_data[3]);
-        accel_z = (int16_t)(raw_sensor_data[4] << 8 | raw_sensor_data[5]);
+        char* led1_str = (HAL_GPIO_ReadPin(LED_1_GPIO_Port, LED_1_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
+        char* led2_str = (HAL_GPIO_ReadPin(LED_2_GPIO_Port, LED_2_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
+        char* led3_str = (HAL_GPIO_ReadPin(LED_3_GPIO_Port, LED_3_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
 
-        gyro_x = (int16_t)(raw_sensor_data[8] << 8 | raw_sensor_data[9]);
-        gyro_y = (int16_t)(raw_sensor_data[10] << 8 | raw_sensor_data[11]);
-        gyro_z = (int16_t)(raw_sensor_data[12] << 8 | raw_sensor_data[13]);
+        memset(dma_tx_buffer, 0, sizeof(dma_tx_buffer));
+
+        int msg_len = snprintf(dma_tx_buffer, sizeof(dma_tx_buffer),
+          "%ld,%u,%lu,%s,%s,%s,%d,%d,%d,%d,%d,%d,%lu,%s\r\n",
+            rounded_rpm, adc_value, duty_percentage, led1_str, led2_str, led3_str, 
+            imu_metrics.raw_ax, imu_metrics.raw_ay, imu_metrics.raw_az,
+            imu_metrics.raw_gx, imu_metrics.raw_gy, imu_metrics.raw_gz,
+            cpu_usage_percent, motor_state_str);
+            
+        uart_tx_ready = 0; // Lock structural hardware interlock barrier
+        HAL_UART_Transmit_DMA(&huart2, (uint8_t*)dma_tx_buffer, msg_len);
       }
     }
 
-    // Capture the timestamp at the end of the loop for CPU usage calculation
-    uint32_t loop_end_time = __HAL_TIM_GET_COUNTER(&htim2); // Get the current timer count at the end of the loop
-
-    // Accumulate active microseconds for CPU usage calculation (handling rare 32-bit roll-overs)
+    // =================================================================
+    // ACCUMULATE ACTIVE MICROSECONDS (Runs on every single loop pass)
+    // =================================================================
+    uint32_t loop_end_time = __HAL_TIM_GET_COUNTER(&htim2);
     if (loop_end_time >= loop_start_time)
     {
-      cpu_active_us += (loop_end_time - loop_start_time); // Normal case: no roll-over
+      cpu_active_us += (loop_end_time - loop_start_time);
     }
     else
     {
-      cpu_active_us += ((4294967295 - loop_start_time) + loop_end_time + 1); // Handle roll-over case
+      cpu_active_us += ((4294967295 - loop_start_time) + loop_end_time + 1);
     }
 
-    // Code for RealTerm Telemetry Display using DMA UART Transmission to PyCharm UI
-    if(current_time_ms - last_1s_toggle_time >= 1000) // Update every 1000 ms for a more responsive display
+    // =================================================================
+    // INTERVAL 2: LOW-SPEED 1000ms CPU PROFILING WINDOW (1Hz)
+    // =================================================================
+    if(current_time_ms - last_1s_toggle_time >= 1000)
     {
-      // If the ture callbak flag isn't set, drp this frame safely
-      if (uart_tx_ready == 0)
-      {
-        last_1s_toggle_time += 10; 
-        continue;
-      }
-
-      // Math: (Active Microseconds / 1,000,000 Microseconds in a second) * 100
-      // Simplified: Active Microseconds / 10,000 = CPU Usage Percentage
+      last_1s_toggle_time = current_time_ms;
       cpu_usage_percent = (cpu_active_us / 10000); 
-      if (cpu_usage_percent > 100) cpu_usage_percent = 100; // Cap CPU usage at 100%
-
-      // Reset the active microseconds counter for the next 1-second interval
-      cpu_active_us = 0; // Reset the active microseconds counter
-
-      // 1. Evaluate the hardware status of all three LEDs
-      char* led1_str = (HAL_GPIO_ReadPin(LED_1_GPIO_Port, LED_1_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
-      char* led2_str = (HAL_GPIO_ReadPin(LED_2_GPIO_Port, LED_2_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
-      char* led3_str = (HAL_GPIO_ReadPin(LED_3_GPIO_Port, LED_3_Pin) == GPIO_PIN_SET) ? "ON" : "OFF";
-
-      // Forcebly clear the array with zeores before every single line
-      memset(dma_tx_buffer, 0, sizeof(dma_tx_buffer)); // Clear the DMA transmission buffer
-
-      /*
-      int msg_len = snprintf(dma_tx_buffer, sizeof(dma_tx_buffer),
-          "\033[H\033[2J"                 // Move cursor to top-left and clear screen
-          "==============================\r\n"
-          "     EMBEDDED TELEMETRY\r\n"
-          "==============================\r\n"
-          " Pot Value   : %4u   \r\n"
-          "------------------------------\r\n"
-          " LED 1       : %s   \r\n"
-          " LED 2       : %s   \r\n"
-          " LED 3       : %s   \r\n"
-          "------------------------------\r\n"
-          " PWM Duty    : %3lu%% \r\n"
-          " Motor RPM   : %-5ld \r\n"
-          "==============================\r\n",
-          adc_value, led1_str, led2_str, led3_str, duty_percentage, rounded_rpm);
-      */
-
-      // Testing HAL Delay
-      //HAL_Delay(50); // Delay for 50 milliseconds
-
-      // Updated Machine-Readable Telemetry Format: RPM, Pot, Duty, LED1, LED2, LED3, AccelX, AccelY, AccelZ, GyroX, GyroY, GyroZ
-      int msg_len = snprintf(dma_tx_buffer, sizeof(dma_tx_buffer),
-        "%ld,%u,%lu,%s,%s,%s,%d,%d,%d,%d,%d,%d,%lu,%s\r\n",
-          rounded_rpm, adc_value, duty_percentage, led1_str, led2_str, led3_str, 
-          accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z, cpu_usage_percent, motor_state_str);
-          
-      last_1s_toggle_time = current_time_ms; // Update the last toggle time
-
-      // Lock the barrier right before launching the transmission pipelin
-      uart_tx_ready = 0; // Clear the UART ready flag before starting transmission
-
-      // 4. Transmit the complete string block to RealTerm
-      HAL_UART_Transmit_DMA(&huart2, (uint8_t*)dma_tx_buffer, msg_len); // Transmit the telemetry data via DMA
+      if (cpu_usage_percent > 100) cpu_usage_percent = 100;
+      cpu_active_us = 0; 
     }
-
-  }
+  } // End of main while(1) loop
   /* USER CODE END 3 */
-}
+} // End of main function
 
 /**
   * @brief System Clock Configuration
